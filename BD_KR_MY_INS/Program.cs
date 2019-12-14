@@ -41,46 +41,108 @@ namespace BD_KR_MY_INS
             return conn;
         }
 
+        private int truncTable(OdbcConnection conn, string table)
+        {
+            OdbcCommand selectCmd = new OdbcCommand("TRUNCATE TABLE " + table, conn);
+            OdbcTransaction tx = null;
+            try
+            {
+                tx = conn.BeginTransaction();
+                selectCmd.Transaction = tx;
+                int tmp = selectCmd.ExecuteNonQuery();
+                tx.Commit();
+                return tmp;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+                tx.Rollback();
+                return -1;
+            }
+        }
+
         private void initData()
         {
             OdbcConnection conn = connectToDB();
             for (int i = 0; i < insInto.Length; i++)
             {
-                for (int j = 0; j < vals.Length; j++)
+                if (truncTable(conn, tableList[i]) != -1)
                 {
-                    OdbcCommand cmd = new OdbcCommand(insInto[i] + vals[j], conn);
-                    OdbcTransaction tx = null;
+                    for (int j = 0; j < vals.Length; j++)
+                    {
+                        OdbcCommand cmd = new OdbcCommand(insInto[i] + vals[j], conn);
+                        OdbcTransaction tx = null;
 
-                    try
-                    {
-                        tx = conn.BeginTransaction();
-                        cmd.Transaction = tx;
-                        Console.WriteLine(cmd.ExecuteNonQuery().ToString());
-                        tx.Commit();
+                        try
+                        {
+                            tx = conn.BeginTransaction();
+                            cmd.Transaction = tx;
+                            Console.WriteLine(cmd.ExecuteNonQuery().ToString());
+                            tx.Commit();
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine(e.Message);
+                            tx.Rollback();
+                        }
+                        System.Threading.Thread.Sleep(6);
                     }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine(e.Message);
-                        tx.Rollback();
-                    }
-                    System.Threading.Thread.Sleep(6);
                 }
 
             }
             conn.Close();
         }
 
-        private ArrayList getCurrentTableLog(OdbcConnection conn, int randTable)
+        private ArrayList getCurrentTableLog(OdbcConnection conn, int randTable, string min)
         {
-            OdbcCommand selectCmd = new OdbcCommand("SELECT * FROM " + tableList[randTable] + " WHERE n_izd = (SELECT min(n_izd) FROM " + tableList[randTable] + ")", conn);
+            OdbcCommand selectCmd = new OdbcCommand("SELECT * FROM " + tableList[randTable] + " WHERE n_izd = (SELECT "+min+"(n_izd) FROM " + tableList[randTable] + ")", conn);
+
+            OdbcTransaction tx = null;
+
+            try
+            {
+                OdbcDataReader selectReader = selectCmd.ExecuteReader();
+                tx = conn.BeginTransaction();
+                selectCmd.Transaction = tx;
+                selectReader.Read();
+                ArrayList tmp = new ArrayList();
+                tmp.Add(selectReader.GetInt32(0));
+                tmp.Add(selectReader.GetString(1));
+                tmp.Add(selectReader.GetString(2));
+                tmp.Add(selectReader.GetDateTime(3));
+                tx.Commit();
+                return tmp;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+                tx.Rollback();
+            }
+
+            return null;
+
+        }
+
+        private int getCounter(OdbcConnection conn, int randTable)
+        {
+            OdbcCommand selectCmd = new OdbcCommand("SELECT nextval('" + tableList[randTable] + "_id_inc')", conn);
             OdbcDataReader selectReader = selectCmd.ExecuteReader();
-            selectReader.Read();
-            ArrayList tmp = new ArrayList();
-            tmp.Add(selectReader.GetInt32(0));
-            tmp.Add(selectReader.GetString(1));
-            tmp.Add(selectReader.GetString(2));
-            tmp.Add(selectReader.GetDateTime(3));
-            return tmp;
+            OdbcTransaction tx = null;
+            try
+            {
+                tx = conn.BeginTransaction();
+                selectCmd.Transaction = tx;
+                selectReader.Read();
+                tx.Commit();
+                return selectReader.GetInt32(0);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+                tx.Rollback();
+            }
+
+            return -1;
 
         }
 
@@ -100,8 +162,8 @@ namespace BD_KR_MY_INS
                 //update
                 case 0:
                     {
-                        before = getCurrentTableLog(conn, randTable);
-                        string sqlCmd = "UPDATE " + tableList[randTable] + " SET name = ?, date = current_timestamp, o_type = 'Обновление " + tableList[randTable] + "' WHERE n_izd = (SELECT min(n_izd) FROM " + tableList[randTable] + ")";
+                        before = getCurrentTableLog(conn, randTable, "min");
+                        string sqlCmd = "UPDATE " + tableList[randTable] + " SET name = ?, date = ?, o_type = 'Обновление " + tableList[randTable] + "' WHERE n_izd = (SELECT min(n_izd) FROM " + tableList[randTable] + "); INSERT INTO log VALUES(current_timestamp, "+ tableList[randTable] +", ?,?,?,?,?,?,?,?)";
                         cmd = new OdbcCommand(sqlCmd, conn);
                         List<OdbcParameter> paramList = new List<OdbcParameter>();
                         OdbcParameter nameParam = new OdbcParameter();
@@ -109,6 +171,167 @@ namespace BD_KR_MY_INS
                         nameParam.OdbcType = OdbcType.Text;
                         nameParam.Value = randProduct[random.Next(randProduct.Length)]; //Выбираем случаайное значение из списка новых продуктов
                         cmd.Parameters.Add(nameParam);
+
+                        OdbcParameter dateParam = new OdbcParameter();
+                        dateParam.ParameterName = "@name";
+                        dateParam.OdbcType = OdbcType.DateTime;
+                        dateParam.Value = DateTime.Now; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(dateParam);
+
+                        OdbcParameter oldnizdParam = new OdbcParameter();
+                        oldnizdParam.ParameterName = "@onizd";
+                        oldnizdParam.OdbcType = OdbcType.Int;
+                        oldnizdParam.Value = before[0]; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(oldnizdParam);
+
+                        OdbcParameter oldName = new OdbcParameter();
+                        oldName.ParameterName = "@oname";
+                        oldName.OdbcType = OdbcType.Text;
+                        oldName.Value = before[1]; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(oldName);
+
+                        OdbcParameter oldOType = new OdbcParameter();
+                        oldOType.ParameterName = "@oname";
+                        oldOType.OdbcType = OdbcType.Text;
+                        oldOType.Value = before[2]; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(oldOType);
+
+                        OdbcParameter oldDate = new OdbcParameter();
+                        oldDate.ParameterName = "@odate";
+                        oldDate.OdbcType = OdbcType.DateTime;
+                        oldDate.Value = before[3]; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(oldDate);
+
+
+                        OdbcParameter newnizdParam = new OdbcParameter();
+                        newnizdParam.ParameterName = "@nnizd";
+                        newnizdParam.OdbcType = OdbcType.Int;
+                        newnizdParam.Value = before[0]; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(newnizdParam);
+
+                        OdbcParameter newName = new OdbcParameter();
+                        newName.ParameterName = "@oname";
+                        newName.OdbcType = OdbcType.Text;
+                        newName.Value = nameParam.Value; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(newName);
+
+                        OdbcParameter newOType = new OdbcParameter();
+                        newOType.ParameterName = "@oname";
+                        newOType.OdbcType = OdbcType.Text;
+                        newOType.Value = "Обновление " + tableList[randTable]; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(newOType);
+
+                        OdbcParameter newDate = new OdbcParameter();
+                        newDate.ParameterName = "@odate";
+                        newDate.OdbcType = OdbcType.DateTime;
+                        newDate.Value = dateParam.Value; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(newDate);
+
+                        //OdbcParameter nizdParam = new OdbcParameter();
+                        //nizdParam.ParameterName = "@nizd";
+                        //nizdParam.OdbcType = OdbcType.Int;
+                        //nizdParam.Value = 1; //Выбираем случаайное значение из списка новых продуктов
+                        //cmd.Parameters.Add(nizdParam);
+
+                        break;
+                    }
+                //insert
+                case 1:
+                    {
+                        int n_izd = getCounter(conn, randTable);
+                        if (n_izd == -1) break;
+
+                        string sqlCmd = "INSERT INTO " + tableList[randTable] + " VALUES (?, ?, ?, o_type = 'Вставка " + tableList[randTable] + "'); INSERT INTO log VALUES(?, " + tableList[randTable] + ", NULL,NULL,NULL,NULL,?,?,?,?)";
+                        cmd = new OdbcCommand(sqlCmd, conn);
+
+                        OdbcParameter nizdParam = new OdbcParameter();
+                        nizdParam.ParameterName = "@name";
+                        nizdParam.OdbcType = OdbcType.Int;
+                        nizdParam.Value = n_izd; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(nizdParam);
+
+                        OdbcParameter nameParam = new OdbcParameter();
+                        nameParam.ParameterName = "@name";
+                        nameParam.OdbcType = OdbcType.Text;
+                        nameParam.Value = randProduct[random.Next(randProduct.Length)]; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(nameParam);
+
+                        OdbcParameter dateParam = new OdbcParameter();
+                        dateParam.ParameterName = "@name";
+                        dateParam.OdbcType = OdbcType.DateTime;
+                        dateParam.Value = DateTime.Now; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(dateParam);
+
+                        OdbcParameter logDateParam = new OdbcParameter();
+                        logDateParam.ParameterName = "@name";
+                        logDateParam.OdbcType = OdbcType.DateTime;
+                        logDateParam.Value = dateParam.Value; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(logDateParam);
+
+
+                        OdbcParameter newnizdParam = new OdbcParameter();
+                        newnizdParam.ParameterName = "@nnizd";
+                        newnizdParam.OdbcType = OdbcType.Int;
+                        newnizdParam.Value = n_izd; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(newnizdParam);
+
+                        OdbcParameter newName = new OdbcParameter();
+                        newName.ParameterName = "@oname";
+                        newName.OdbcType = OdbcType.Text;
+                        newName.Value = nameParam.Value; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(newName);
+
+                        OdbcParameter newOType = new OdbcParameter();
+                        newOType.ParameterName = "@oname";
+                        newOType.OdbcType = OdbcType.Text;
+                        newOType.Value = "Обновление " + tableList[randTable]; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(newOType);
+
+                        OdbcParameter newDate = new OdbcParameter();
+                        newDate.ParameterName = "@odate";
+                        newDate.OdbcType = OdbcType.DateTime;
+                        newDate.Value = dateParam.Value; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(newDate);
+
+                        //OdbcParameter nizdParam = new OdbcParameter();
+                        //nizdParam.ParameterName = "@nizd";
+                        //nizdParam.OdbcType = OdbcType.Int;
+                        //nizdParam.Value = 1; //Выбираем случаайное значение из списка новых продуктов
+                        //cmd.Parameters.Add(nizdParam);
+
+                        break;
+                    }
+                //DELETE
+                case 2:
+                    {
+                        before = getCurrentTableLog(conn, randTable, "max");
+                        if (before == null) break;
+                        string sqlCmd = "DELETE FROM " + tableList[randTable] + " WHERE n_izd = (SELECT max(n_izd) FROM " + tableList[randTable] + "); INSERT INTO log VALUES(current_timestamp, " + tableList[randTable] + ", ?,?,?,?,NULL,NULL,NULL,NULL)";
+                        cmd = new OdbcCommand(sqlCmd, conn);
+
+                        OdbcParameter oldnizdParam = new OdbcParameter();
+                        oldnizdParam.ParameterName = "@onizd";
+                        oldnizdParam.OdbcType = OdbcType.Int;
+                        oldnizdParam.Value = before[0]; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(oldnizdParam);
+
+                        OdbcParameter oldName = new OdbcParameter();
+                        oldName.ParameterName = "@oname";
+                        oldName.OdbcType = OdbcType.Text;
+                        oldName.Value = before[1]; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(oldName);
+
+                        OdbcParameter oldOType = new OdbcParameter();
+                        oldOType.ParameterName = "@oname";
+                        oldOType.OdbcType = OdbcType.Text;
+                        oldOType.Value = before[2]; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(oldOType);
+
+                        OdbcParameter oldDate = new OdbcParameter();
+                        oldDate.ParameterName = "@odate";
+                        oldDate.OdbcType = OdbcType.DateTime;
+                        oldDate.Value = before[3]; //Выбираем случаайное значение из списка новых продуктов
+                        cmd.Parameters.Add(oldDate);
 
                         //OdbcParameter nizdParam = new OdbcParameter();
                         //nizdParam.ParameterName = "@nizd";
@@ -136,7 +359,7 @@ namespace BD_KR_MY_INS
                         tx.Rollback();
                     }
                     System.Threading.Thread.Sleep(6);
-            after = getCurrentTableLog(conn, randTable);
+            //after = getCurrentTableLog(conn, randTable);
             conn.Close();
 
         }
