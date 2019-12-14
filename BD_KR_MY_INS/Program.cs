@@ -84,6 +84,9 @@ namespace BD_KR_MY_INS
         {
             OdbcConnection conn = connectToDB();
             truncTable(conn, "pmib6703.log");
+            truncTable(conn, "pmib6703.rep_date");
+            resetSeq(conn, "pmib6703.rep_date" + "_n_seq");
+
             for (int i = 0; i < tableList.Length; i++)
             {
                 truncTable(conn, tableList[i]);
@@ -405,7 +408,7 @@ namespace BD_KR_MY_INS
                 Console.WriteLine(e.Message);
                 tx.Rollback();
             }
-            System.Threading.Thread.Sleep(6);
+            System.Threading.Thread.Sleep(100);
             //after = getCurrentTableLog(conn, randTable);
             conn.Close();
 
