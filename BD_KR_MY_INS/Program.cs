@@ -1,18 +1,18 @@
 ﻿using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Data.Odbc;
 
 namespace BD_KR_MY_INS
 {
     class Program
     {
+        //список таблиц
         private static string[] tableList = new string[] { "pmib6703.rbd1", "pmib6703.rbd2", "pmib6703.rbd3", "pmib6703.cbd" };
 
-        private static string[] insInto = new string[] { "INSERT INTO pmib6703.rbd1 VALUES (nextval('pmib6703.rbd1_id_inc'),", "INSERT INTO pmib6703.rbd2 VALUES (nextval('pmib6703.rbd2_id_inc'),", "INSERT INTO pmib6703.rbd3 VALUES (nextval('pmib6703.rbd3_id_inc'),", "INSERT INTO pmib6703.cbd VALUES (nextval('pmib6703.cbd_id_inc')," };
-
+        //случайные названия для работы ИРС
         private string[] randProduct = new string[] { "Ryzen 3 2300", "GTX 1650 Ti", "Vega 56", "Celeron G3200", "Xeon 2640V3", "Xeon 2689", "Samsung DDR4 8Gb(B-Die)" };
 
+        //названия для работы инициализации
         private static string[] vals = new string[] {"'Ryzen 5 2600'",
         "'Ryzen 7 2700X'",
         "'Ryzen 7 2700'",
@@ -29,6 +29,7 @@ namespace BD_KR_MY_INS
         "'FX 6300'",
         "'Core i7 2600K'"};
 
+        //функция подключения к нашей БД
         public OdbcConnection connectToDB()
         {
             // Создаем объект подключения
@@ -40,6 +41,7 @@ namespace BD_KR_MY_INS
             return conn;
         }
 
+        //Очистка заданной БД
         private int truncTable(OdbcConnection conn, string table)
         {
             OdbcCommand selectCmd = new OdbcCommand("TRUNCATE TABLE " + table, conn);
@@ -60,6 +62,7 @@ namespace BD_KR_MY_INS
             }
         }
 
+        //Сброс заданного счетчика
         private void resetSeq(OdbcConnection conn, string seq)
         {
             OdbcCommand selectCmd = new OdbcCommand("ALTER SEQUENCE " + seq + " RESTART", conn);
@@ -79,7 +82,7 @@ namespace BD_KR_MY_INS
         }
 
 
-
+        //программа инициализации
         private void initData()
         {
             OdbcConnection conn = connectToDB();
@@ -87,6 +90,7 @@ namespace BD_KR_MY_INS
             truncTable(conn, "pmib6703.rep_date");
             resetSeq(conn, "pmib6703.rep_date" + "_n_seq");
 
+            //очищаем все таблицы и сбрасываем у них счетчики уникальных идентификаторов
             for (int i = 0; i < tableList.Length; i++)
             {
                 truncTable(conn, tableList[i]);
@@ -94,6 +98,7 @@ namespace BD_KR_MY_INS
 
             }
 
+            //По каждому названию
             for (int j = 0; j < vals.Length; j++)
             {
                 OdbcTransaction tx = null;
@@ -103,8 +108,9 @@ namespace BD_KR_MY_INS
                     tx = conn.BeginTransaction();
                     for (int i = 0; i < tableList.Length; i++)
                     {
+                        //Получаем счетчик
                         int n_izd = getCounter(i);
-                        OdbcCommand tmp = new OdbcCommand("INSERT INTO "+ tableList[i] + " VALUES (?," + vals[j] + ",'Начальная вставка', current_timestamp); INSERT INTO pmib6703.log VALUES (current_timestamp, '"+ tableList[i] +"', NULL, NULL, NULL, NULL, ?, "+vals[j]+ ",'Начальная вставка', current_timestamp);", conn);
+                        OdbcCommand tmp = new OdbcCommand("INSERT INTO " + tableList[i] + " VALUES (?," + vals[j] + ",'Начальная вставка', current_timestamp); INSERT INTO pmib6703.log VALUES (current_timestamp, '" + tableList[i] + "', NULL, NULL, NULL, NULL, ?, " + vals[j] + ",'Начальная вставка', current_timestamp);", conn);
 
                         OdbcParameter nizdParam = new OdbcParameter();
                         nizdParam.ParameterName = "@nizd";
@@ -120,7 +126,7 @@ namespace BD_KR_MY_INS
 
 
                         tmp.Transaction = tx;
-                        Console.WriteLine(tmp.ExecuteNonQuery().ToString());
+                        Console.WriteLine("Вставлена строка " + n_izd.ToString() + " " + vals[j] + " " + tmp.ExecuteNonQuery().ToString());
                     }
                     //OdbcCommand logInto = new OdbcCommand("INSERT INTO pmib6703.log");
                     //cmd.Transaction = tx;
@@ -137,6 +143,7 @@ namespace BD_KR_MY_INS
             conn.Close();
         }
 
+        //Получаем строку, которую будем модифицировать (важно для лога)
         private ArrayList getCurrentTableLog(OdbcConnection conn, int randTable, string min)
         {
             OdbcCommand selectCmd = new OdbcCommand("SELECT * FROM " + tableList[randTable] + " WHERE n_izd = (SELECT " + min + "(n_izd) FROM " + tableList[randTable] + ")", conn);
@@ -167,6 +174,7 @@ namespace BD_KR_MY_INS
 
         }
 
+        //получаем уникальный идентификатор для заданной таблицы
         private int getCounter(int randTable)
         {
             OdbcConnection conn = connectToDB();
@@ -191,6 +199,7 @@ namespace BD_KR_MY_INS
 
         }
 
+        //ИРС
         private void imitate()
         {
             string[] opList = { "update ", "insert ", "delete " };
@@ -201,7 +210,7 @@ namespace BD_KR_MY_INS
             OdbcConnection conn = connectToDB();
             int i = random.Next(3);
             //Debug
-            int randTable = random.Next(tableList.Length-1);
+            int randTable = random.Next(tableList.Length - 1);
 
             OdbcCommand cmd = null;
             switch (i)
@@ -218,12 +227,6 @@ namespace BD_KR_MY_INS
                         nameParam.OdbcType = OdbcType.Text;
                         nameParam.Value = randProduct[random.Next(randProduct.Length)]; //Выбираем случаайное значение из списка новых продуктов
                         cmd.Parameters.Add(nameParam);
-
-                        //OdbcParameter dateParam = new OdbcParameter();
-                        //dateParam.ParameterName = "@name";
-                        //dateParam.OdbcType = OdbcType.DateTime;
-                        //dateParam.Value = DateTime.Now.AddHours(-1).AddMinutes(-1).AddSeconds(-15); //Выбираем случаайное значение из списка новых продуктов
-                        //cmd.Parameters.Add(dateParam);
 
                         OdbcParameter oldnizdParam = new OdbcParameter();
                         oldnizdParam.ParameterName = "@onizd";
@@ -268,18 +271,6 @@ namespace BD_KR_MY_INS
                         newOType.Value = "Обновление " + tableList[randTable]; //Выбираем случаайное значение из списка новых продуктов
                         cmd.Parameters.Add(newOType);
 
-                        //OdbcParameter newDate = new OdbcParameter();
-                        //newDate.ParameterName = "@odate";
-                        //newDate.OdbcType = OdbcType.DateTime;
-                        //newDate.Value = dateParam.Value; //Выбираем случаайное значение из списка новых продуктов
-                        //cmd.Parameters.Add(newDate);
-
-                        //OdbcParameter nizdParam = new OdbcParameter();
-                        //nizdParam.ParameterName = "@nizd";
-                        //nizdParam.OdbcType = OdbcType.Int;
-                        //nizdParam.Value = 1; //Выбираем случаайное значение из списка новых продуктов
-                        //cmd.Parameters.Add(nizdParam);
-
                         break;
                     }
                 //insert
@@ -302,19 +293,6 @@ namespace BD_KR_MY_INS
                         nameParam.Value = randProduct[random.Next(randProduct.Length)]; //Выбираем случаайное значение из списка новых продуктов
                         cmd.Parameters.Add(nameParam);
 
-                        //OdbcParameter dateParam = new OdbcParameter();
-                        //dateParam.ParameterName = "@name";
-                        //dateParam.OdbcType = OdbcType.DateTime;
-                        //dateParam.Value = DateTime.Now.AddHours(-1).AddMinutes(-1).AddSeconds(-15); //Выбираем случаайное значение из списка новых продуктов
-                        //cmd.Parameters.Add(dateParam);
-
-                        //OdbcParameter logDateParam = new OdbcParameter();
-                        //logDateParam.ParameterName = "@name";
-                        //logDateParam.OdbcType = OdbcType.DateTime;
-                        //logDateParam.Value = dateParam.Value; //Выбираем случаайное значение из списка новых продуктов
-                        //cmd.Parameters.Add(logDateParam);
-
-
                         OdbcParameter newnizdParam = new OdbcParameter();
                         newnizdParam.ParameterName = "@nnizd";
                         newnizdParam.OdbcType = OdbcType.Int;
@@ -324,7 +302,7 @@ namespace BD_KR_MY_INS
                         OdbcParameter newName = new OdbcParameter();
                         newName.ParameterName = "@oname";
                         newName.OdbcType = OdbcType.Text;
-                        newName.Value = randProduct[random.Next(randProduct.Length)]; //Выбираем случаайное значение из списка новых продуктов
+                        newName.Value = nameParam.Value; //Выбираем случаайное значение из списка новых продуктов
                         cmd.Parameters.Add(newName);
 
                         OdbcParameter newOType = new OdbcParameter();
@@ -332,18 +310,6 @@ namespace BD_KR_MY_INS
                         newOType.OdbcType = OdbcType.Text;
                         newOType.Value = "Вставка " + tableList[randTable]; //Выбираем случаайное значение из списка новых продуктов
                         cmd.Parameters.Add(newOType);
-
-                        //OdbcParameter newDate = new OdbcParameter();
-                        //newDate.ParameterName = "@odate";
-                        //newDate.OdbcType = OdbcType.DateTime;
-                        //newDate.Value = dateParam.Value; //Выбираем случаайное значение из списка новых продуктов
-                        //cmd.Parameters.Add(newDate);
-
-                        //OdbcParameter nizdParam = new OdbcParameter();
-                        //nizdParam.ParameterName = "@nizd";
-                        //nizdParam.OdbcType = OdbcType.Int;
-                        //nizdParam.Value = 1; //Выбираем случаайное значение из списка новых продуктов
-                        //cmd.Parameters.Add(nizdParam);
 
                         break;
                     }
@@ -383,12 +349,6 @@ namespace BD_KR_MY_INS
                         oldDate.Value = before[3]; //Выбираем случаайное значение из списка новых продуктов
                         cmd.Parameters.Add(oldDate);
 
-                        //OdbcParameter nizdParam = new OdbcParameter();
-                        //nizdParam.ParameterName = "@nizd";
-                        //nizdParam.OdbcType = OdbcType.Int;
-                        //nizdParam.Value = 1; //Выбираем случаайное значение из списка новых продуктов
-                        //cmd.Parameters.Add(nizdParam);
-
                         break;
                     }
                 default: break;
@@ -408,8 +368,9 @@ namespace BD_KR_MY_INS
                 Console.WriteLine(e.Message);
                 tx.Rollback();
             }
+            //Время между разными разными продуктами
             System.Threading.Thread.Sleep(100);
-            //after = getCurrentTableLog(conn, randTable);
+
             conn.Close();
 
         }
@@ -426,7 +387,7 @@ namespace BD_KR_MY_INS
                 while (true)
                 {
                     a.imitate();
-                    System.Threading.Thread.Sleep(1000);
+                    System.Threading.Thread.Sleep(1000); //Время повтора запуска ИРД
                 }
             }
         }
